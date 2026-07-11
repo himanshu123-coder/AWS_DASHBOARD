@@ -4,7 +4,7 @@ import RecommendationCard from '../components/RecommendationCard';
 import { recommendations as initialRecommendations } from '../data/dashboardData';
 
 interface Recommendation {
-  id: number;
+  id: string;
   title: string;
   description: string;
   severity: string;
@@ -21,16 +21,18 @@ export default function AIRecommendations() {
   );
   const [showToast, setShowToast] = useState<string | null>(null);
 
-  const handleIgnore = (id: number) => {
+  const handleIgnore = (id: string | number) => {
+    const numId = typeof id === 'string' ? parseInt(id, 10) : id;
     setRecommendations((prev) =>
-      prev.map((rec) => (rec.id === id ? { ...rec, status: 'ignored' } : rec))
+      prev.map((rec) => (rec.id === numId ? { ...rec, status: 'ignored' } : rec))
     );
     showToastNotification('Recommendation ignored');
   };
 
-  const handleSchedule = (id: number) => {
+  const handleSchedule = (id: string | number) => {
+    const numId = typeof id === 'string' ? parseInt(id, 10) : id;
     setRecommendations((prev) =>
-      prev.map((rec) => (rec.id === id ? { ...rec, status: 'scheduled' } : rec))
+      prev.map((rec) => (rec.id === numId ? { ...rec, status: 'scheduled' } : rec))
     );
     showToastNotification('Recommendation scheduled');
   };

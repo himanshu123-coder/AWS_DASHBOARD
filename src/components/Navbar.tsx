@@ -6,8 +6,17 @@ import {
   Sun,
   ChevronDown,
   User,
+  LogOut,
 } from 'lucide-react';
-import { projects, regions, dateRanges } from '../data/dashboardData';
+import { useAuth } from '../lib/auth-context';
+import { useProject } from '../lib/project-context';
+
+const DATE_RANGES = [
+  { id: 1, name: 'Last 24 Hours' },
+  { id: 2, name: 'Last 7 Days' },
+  { id: 3, name: 'Last 30 Days' },
+  { id: 4, name: 'Last 90 Days' },
+];
 
 interface NavbarProps {
   darkMode: boolean;
@@ -24,12 +33,12 @@ export default function Navbar({
   setLastUpdated,
   setIsSidebarOpen,
 }: NavbarProps) {
-  const [selectedProject, setSelectedProject] = useState(projects[0].name);
-  const [selectedRegion, setSelectedRegion] = useState(regions[0].name);
-  const [selectedDateRange, setSelectedDateRange] = useState(dateRanges[1].name);
+  const { user, logout } = useAuth();
+  const { projects, selectedProject, setSelectedProjectId } = useProject();
+  const [selectedDateRange, setSelectedDateRange] = useState(DATE_RANGES[1].name);
   const [isProjectOpen, setIsProjectOpen] = useState(false);
-  const [isRegionOpen, setIsRegionOpen] = useState(false);
   const [isDateOpen, setIsDateOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const handleRefresh = () => {
     const now = new Date();
@@ -51,84 +60,50 @@ export default function Navbar({
         </button>
 
         <div className="hidden sm:flex items-center gap-3">
-          <div className="relative">
-            <button
-              onClick={() => {
-                setIsProjectOpen(!isProjectOpen);
-                setIsRegionOpen(false);
-                setIsDateOpen(false);
-              }}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                {selectedProject}
-              </span>
-              <ChevronDown className="w-4 h-4 text-slate-500" />
-            </button>
-            {isProjectOpen && (
-              <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 z-50">
-                {projects.map((project) => (
-                  <button
-                    key={project.id}
-                    onClick={() => {
-                      setSelectedProject(project.name);
-                      setIsProjectOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 first:rounded-t-lg last:rounded-b-lg ${
-                      selectedProject === project.name
-                        ? 'text-indigo-600 dark:text-indigo-400 font-medium'
-                        : 'text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {project.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="relative">
-            <button
-              onClick={() => {
-                setIsRegionOpen(!isRegionOpen);
-                setIsProjectOpen(false);
-                setIsDateOpen(false);
-              }}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            >
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                {selectedRegion}
-              </span>
-              <ChevronDown className="w-4 h-4 text-slate-500" />
-            </button>
-            {isRegionOpen && (
-              <div className="absolute top-full left-0 mt-1 w-40 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 z-50">
-                {regions.map((region) => (
-                  <button
-                    key={region.id}
-                    onClick={() => {
-                      setSelectedRegion(region.name);
-                      setIsRegionOpen(false);
-                    }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 first:rounded-t-lg last:rounded-b-lg ${
-                      selectedRegion === region.name
-                        ? 'text-indigo-600 dark:text-indigo-400 font-medium'
-                        : 'text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {region.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {selectedProject && (
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setIsProjectOpen(!isProjectOpen);
+                  setIsDateOpen(false);
+                  setIsUserMenuOpen(false);
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  {selectedProject.name}
+                </span>
+                <ChevronDown className="w-4 h-4 text-slate-500" />
+              </button>
+              {isProjectOpen && (
+                <div className="absolute top-full left-0 mt-1 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 z-50">
+                  {projects.map((project) => (
+                    <button
+                      key={project._id}
+                      onClick={() => {
+                        setSelectedProjectId(project._id);
+                        setIsProjectOpen(false);
+                      }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 first:rounded-t-lg last:rounded-b-lg ${
+                        selectedProject._id === project._id
+                          ? 'text-indigo-600 dark:text-indigo-400 font-medium'
+                          : 'text-slate-700 dark:text-slate-300'
+                      }`}
+                    >
+                      {project.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="relative">
             <button
               onClick={() => {
                 setIsDateOpen(!isDateOpen);
                 setIsProjectOpen(false);
-                setIsRegionOpen(false);
+                setIsUserMenuOpen(false);
               }}
               className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
             >
@@ -139,7 +114,7 @@ export default function Navbar({
             </button>
             {isDateOpen && (
               <div className="absolute top-full left-0 mt-1 w-44 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 z-50">
-                {dateRanges.map((range) => (
+                {DATE_RANGES.map((range) => (
                   <button
                     key={range.id}
                     onClick={() => {
@@ -187,11 +162,43 @@ export default function Navbar({
           )}
         </button>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800">
-          <User className="w-4 h-4 text-slate-600 dark:text-slate-400" />
-          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-            Admin
-          </span>
+        <div className="relative">
+          <button
+            onClick={() => {
+              setIsUserMenuOpen(!isUserMenuOpen);
+              setIsProjectOpen(false);
+              setIsDateOpen(false);
+            }}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+          >
+            <User className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              {user?.name || 'User'}
+            </span>
+            <ChevronDown className="w-3 h-3 text-slate-500" />
+          </button>
+          {isUserMenuOpen && (
+            <div className="absolute top-full right-0 mt-1 w-48 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 z-50">
+              <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
+                <p className="text-sm font-medium text-slate-800 dark:text-white">
+                  {user?.name}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {user?.email}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  logout();
+                  setIsUserMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 first:rounded-t-lg last:rounded-b-lg transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

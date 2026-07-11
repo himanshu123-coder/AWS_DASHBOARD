@@ -1,28 +1,21 @@
 import { X, Cpu, HardDrive, Wifi, Clock, Server, MapPin, Sparkles } from 'lucide-react';
-
-interface Instance {
-  id: string;
-  name: string;
-  type: string;
-  state: string;
-  region: string;
-  cpu: number;
-  networkIn: string;
-  networkOut: string;
-  monthlyCost: string;
-  memory: string;
-  storage: string;
-  uptime: string;
-}
+import type { CloudInstance } from '../lib/types';
 
 interface InstanceDetailsModalProps {
-  instance: Instance;
+  instance: CloudInstance;
   onClose: () => void;
 }
 
 export default function InstanceDetailsModal({ instance, onClose }: InstanceDetailsModalProps) {
+  const cpu = instance.cpuUsage;
+  const memory = instance.memoryUsage;
+  const storage = instance.storageUsed;
+
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
       <div
         className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-slate-200 dark:border-slate-800 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
@@ -33,7 +26,7 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
               {instance.name}
             </h2>
             <p className="text-sm text-slate-500 dark:text-slate-400 font-mono mt-1">
-              {instance.id}
+              {instance.instanceId}
             </p>
           </div>
           <button
@@ -52,7 +45,7 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
                 <span className="text-xs font-medium">Instance Type</span>
               </div>
               <p className="text-lg font-semibold text-slate-800 dark:text-white">
-                {instance.type}
+                {instance.instanceType}
               </p>
             </div>
             <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4">
@@ -70,7 +63,7 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
                 <span className="text-xs font-medium">Uptime</span>
               </div>
               <p className="text-lg font-semibold text-slate-800 dark:text-white">
-                {instance.uptime}
+                {instance.uptime}%
               </p>
             </div>
           </div>
@@ -89,17 +82,17 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
                   <div className="flex-1 h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full ${
-                        instance.cpu > 80
+                        cpu > 80
                           ? 'bg-red-500'
-                          : instance.cpu > 50
+                          : cpu > 50
                           ? 'bg-amber-500'
                           : 'bg-green-500'
                       }`}
-                      style={{ width: `${instance.cpu}%` }}
+                      style={{ width: `${cpu}%` }}
                     />
                   </div>
                   <span className="text-sm font-medium text-slate-800 dark:text-white">
-                    {instance.cpu}%
+                    {cpu}%
                   </span>
                 </div>
               </div>
@@ -112,11 +105,11 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
                   <div className="flex-1 h-3 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full bg-blue-500"
-                      style={{ width: instance.memory }}
+                      style={{ width: `${memory}%` }}
                     />
                   </div>
                   <span className="text-sm font-medium text-slate-800 dark:text-white">
-                    {instance.memory}
+                    {memory}%
                   </span>
                 </div>
               </div>
@@ -126,7 +119,7 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
                   <span className="text-xs font-medium">Storage</span>
                 </div>
                 <p className="text-sm font-semibold text-slate-800 dark:text-white">
-                  {instance.storage}
+                  {storage} GB
                 </p>
               </div>
             </div>
@@ -144,7 +137,7 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Network In</p>
                   <p className="text-lg font-semibold text-slate-800 dark:text-white">
-                    {instance.networkIn}
+                    {instance.networkIn} MB/s
                   </p>
                 </div>
               </div>
@@ -155,7 +148,7 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
                 <div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Network Out</p>
                   <p className="text-lg font-semibold text-slate-800 dark:text-white">
-                    {instance.networkOut}
+                    {instance.networkOut} MB/s
                   </p>
                 </div>
               </div>
@@ -167,7 +160,9 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
               Monthly Cost
             </h3>
             <div className="bg-linear-to-r from-indigo-500 to-blue-500 rounded-xl p-4 text-white">
-              <p className="text-3xl font-bold">{instance.monthlyCost}</p>
+              <p className="text-3xl font-bold">
+                ${instance.monthlyCost.toFixed(2)}
+              </p>
               <p className="text-sm text-white/80 mt-1">Based on current usage</p>
             </div>
           </div>
@@ -181,11 +176,11 @@ export default function InstanceDetailsModal({ instance, onClose }: InstanceDeta
                 <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
                   AI Recommendation
                 </p>
-                {instance.cpu < 10 && instance.state === 'idle' ? (
+                {cpu < 10 && instance.state === 'idle' ? (
                   <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
                     This instance has low CPU usage. Consider stopping it during non-working hours to reduce costs.
                   </p>
-                ) : instance.cpu > 80 ? (
+                ) : cpu > 80 ? (
                   <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
                     High CPU usage detected. Consider upgrading to a larger instance type or implementing auto-scaling.
                   </p>

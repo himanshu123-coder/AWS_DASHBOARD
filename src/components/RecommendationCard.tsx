@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface RecommendationCardProps {
-  id: number;
+  id: string;
   title: string;
   description: string;
   severity: string;
@@ -11,8 +11,9 @@ interface RecommendationCardProps {
   confidence: number;
   generatedTime: string;
   status: string;
-  onIgnore: (id: number) => void;
-  onSchedule: (id: number) => void;
+  reason?: string;
+  onIgnore: (id: string) => void;
+  onSchedule: (id: string) => void;
 }
 
 export default function RecommendationCard({
@@ -25,6 +26,7 @@ export default function RecommendationCard({
   confidence,
   generatedTime,
   status,
+  reason,
   onIgnore,
   onSchedule,
 }: RecommendationCardProps) {
@@ -41,11 +43,14 @@ export default function RecommendationCard({
 
   const getStatusBadge = () => {
     const badges: { [key: string]: string } = {
+      pending: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      apply_later: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
+      applied: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+      ignored: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400',
       active: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
       scheduled: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',
-      ignored: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400',
     };
-    return badges[status] || badges.active;
+    return badges[status] || badges.pending;
   };
 
   return (
@@ -124,11 +129,13 @@ export default function RecommendationCard({
 
       {isExpanded && (
         <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
-          <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {reason || description}
+          </p>
         </div>
       )}
 
-      {status === 'active' && (
+      {status === 'pending' && (
         <div className="flex gap-2 mt-4">
           <button
             onClick={() => onIgnore(id)}

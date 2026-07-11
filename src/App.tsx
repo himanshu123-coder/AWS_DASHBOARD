@@ -8,12 +8,12 @@ import CostOptimization from './pages/CostOptimization';
 import AIRecommendations from './pages/AIRecommendation';
 import Alerts from './pages/Alert';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
+import { AuthProvider, useAuth } from './lib/auth-context';
+import { ProjectProvider } from './lib/project-context';
+import { Loader2 } from 'lucide-react';
 
-function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved === 'true';
-  });
+function Dashboard() {
   const [activePage, setActivePage] = useState('overview');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(() => {
@@ -22,6 +22,11 @@ function App() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  });
+
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('darkMode');
+    return saved === 'true';
   });
 
   useEffect(() => {
@@ -80,4 +85,29 @@ function App() {
   );
 }
 
-export default App;
+function AppContent() {
+  const { user, loading } = useAuth();
+
+  if (loading)
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+      </div>
+    );
+
+  if (!user) return <Login />;
+
+  return (
+    <ProjectProvider>
+      <Dashboard />
+    </ProjectProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}

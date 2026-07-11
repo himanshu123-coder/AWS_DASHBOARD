@@ -1,33 +1,42 @@
-import { useState } from 'react';
-import { Search, Filter, X, Eye } from 'lucide-react';
-import { instances } from '../data/dashboardData';
+import { useState, useEffect } from 'react';
+import { Search, Filter, X, Eye, Loader2, AlertCircle } from 'lucide-react';
 import InstanceDetailsModal from './InstanceDetailModal';
-
-interface Instance {
-  id: string;
-  name: string;
-  type: string;
-  state: string;
-  region: string;
-  cpu: number;
-  networkIn: string;
-  networkOut: string;
-  monthlyCost: string;
-  memory: string;
-  storage: string;
-  uptime: string;
-}
+import { api } from '../lib/api';
+import { useProject } from '../lib/project-context';
+import type { CloudInstance } from '../lib/types';
 
 export default function InstanceTable() {
+  const { selectedProject } = useProject();
+  const [instances, setInstances] = useState<CloudInstance[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [regionFilter, setRegionFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('');
-  const [selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
+  const [selectedInstance, setSelectedInstance] = useState<CloudInstance | null>(
+    null
+  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    api
+      .get<{ data: CloudInstance[] }>(
+        `/projects/${selectedProject._id}/instances?limit=100`
+      )
+      .then((res) => setInstances(res.data || []))
+      .catch((err) => setError(err.message || 'Failed to load instances'))
+      .finally(() => setLoading(false));
+  }, [selectedProject]);
 
   const filteredInstances = instances.filter((instance) => {
     const matchesSearch =
       instance.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      instance.id.toLowerCase().includes(searchQuery.toLowerCase());
+      instance.instanceId.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRegion = !regionFilter || instance.region === regionFilter;
     const matchesState = !stateFilter || instance.state === stateFilter;
     return matchesSearch && matchesRegion && matchesState;
@@ -44,13 +53,29 @@ export default function InstanceTable() {
       running: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
       stopped: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400',
       idle: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-      warning: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+      pending: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+      terminated: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     };
     return badges[state] || 'bg-slate-100 text-slate-700';
   };
 
   const uniqueRegions = [...new Set(instances.map((i) => i.region))];
   const uniqueStates = [...new Set(instances.map((i) => i.state))];
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+      </div>
+    );
+
+  if (error)
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-center">
+        <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
+        <p className="text-sm text-slate-500 dark:text-slate-400">{error}</p>
+      </div>
+    );
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -143,17 +168,17 @@ export default function InstanceTable() {
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
             {filteredInstances.map((instance) => (
               <tr
-                key={instance.id}
+                key={instance._id}
                 className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
               >
                 <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-white">
                   {instance.name}
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 font-mono">
-                  {instance.id}
+                  {instance.instanceId}
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                  {instance.type}
+                  {instance.instanceType}
                 </td>
                 <td className="px-4 py-3">
                   <span
@@ -172,28 +197,28 @@ export default function InstanceTable() {
                     <div className="w-16 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full ${
-                          instance.cpu > 80
+                          instance.cpuUsage > 80
                             ? 'bg-red-500'
-                            : instance.cpu > 50
+                            : instance.cpuUsage > 50
                             ? 'bg-amber-500'
                             : 'bg-green-500'
                         }`}
-                        style={{ width: `${instance.cpu}%` }}
+                        style={{ width: `${instance.cpuUsage}%` }}
                       />
                     </div>
                     <span className="text-sm text-slate-600 dark:text-slate-300">
-                      {instance.cpu}%
+                      {instance.cpuUsage}%
                     </span>
                   </div>
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                  {instance.networkIn}
+                  {instance.networkIn} MB/s
                 </td>
                 <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                  {instance.networkOut}
+                  {instance.networkOut} MB/s
                 </td>
                 <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-white">
-                  {instance.monthlyCost}
+                  ${instance.monthlyCost.toFixed(2)}
                 </td>
                 <td className="px-4 py-3">
                   <button
