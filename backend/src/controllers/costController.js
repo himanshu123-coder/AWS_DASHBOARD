@@ -2,97 +2,263 @@
 
 const CostRecord = require('../models/CostRecord');
 const Project = require('../models/Project');
+
 const { predictMonthlySpend } = require('../services/costService');
-const { ok, notFound } = require('../utils/response');
+const { ok, created } = require('../utils/response');
 const asyncHandler = require('../utils/asyncHandler');
 
-const _ownedProject = async (projectId, userId) =>
-  Project.findOne({ _id: projectId, owner: userId });
+async function getOrCreateWorkspace(userId) {
+  let workspace = await Project.findOne({
+    owner: userId,
+    status: 'active',
+  }).sort({ createdAt: -1 });
 
-// GET /api/projects/:projectId/costs/trend
+  if (!workspace) {
+    workspace = await Project.create({
+      name: 'Default AWS Workspace',
+      description: 'Default cloud monitoring workspace',
+      environment: 'production',
+      cloudProvider: 'AWS',
+      owner: userId,
+      defaultRegion: 'ap-south-1',
+      status: 'active',
+    });
+  }
+
+  return workspace;
+}
+const createCostRecord = asyncHandler(async (req, res) => {
+  const workspace = await getOrCreateWorkspace(req.user._id);
+
+  const costRecord = await CostRecord.create({
+    project: workspace._id,
+    owner: req.user._id,
+    service: req.body.service,
+    amount: Number(req.body.amount),
+    currency: req.body.currency || 'INR',
+    region: req.body.region || workspace.defaultRegion,
+    usageDate: req.body.usageDate
+      ? new Date(req.body.usageDate)
+      : new Date(),
+    source: req.body.source || 'manual',
+  });
+
+  return created(res, 'Cost record created.', costRecord);
+});
+
+
+
+// GET /api/costs/trend
 const getCostTrend = asyncHandler(async (req, res) => {
-  const project = await _ownedProject(req.params.projectId, req.user._id);
-  if (!project) return notFound(res, 'Project not found.');
+  const workspace = await getOrCreateWorkspace(req.user._id);
 
-  const months = parseInt(req.query.months, 10) || 6;
+  const rawMonths = Number.parseInt(req.query.months, 10);
+  const months =
+    Number.isFinite(rawMonths) && rawMonths > 0
+      ? Math.min(rawMonths, 24)
+      : 6;
+
   const since = new Date();
   since.setMonth(since.getMonth() - months);
+  since.setHours(0, 0, 0, 0);
 
   const data = await CostRecord.aggregate([
-    { $match: { project: project._id, usageDate: { $gte: since } } },
     {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m', date: '$usageDate' } },
-        total: { $sum: '$amount' },
+      $match: {
+        project: workspace._id,
+        usageDate: {
+          $gte: since,
+        },
       },
     },
-    { $sort: { _id: 1 } },
-    { $project: { _id: 0, month: '$_id', total: { $round: ['$total', 2] } } },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: '%Y-%m',
+            date: '$usageDate',
+          },
+        },
+        total: {
+          $sum: '$amount',
+        },
+      },
+    },
+    {
+      $sort: {
+        _id: 1,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        month: '$_id',
+        total: {
+          $round: ['$total', 2],
+        },
+      },
+    },
   ]);
 
   return ok(res, 'Cost trend fetched.', data);
 });
 
-// GET /api/projects/:projectId/costs/by-service
+// GET /api/costs/by-service
 const getCostByService = asyncHandler(async (req, res) => {
-  const project = await _ownedProject(req.params.projectId, req.user._id);
-  if (!project) return notFound(res, 'Project not found.');
+  const workspace = await getOrCreateWorkspace(req.user._id);
 
-  const since = new Date();
-  since.setDate(1); // start of current month
+  const currentMonthStart = new Date();
+  currentMonthStart.setDate(1);
+  currentMonthStart.setHours(0, 0, 0, 0);
 
   const data = await CostRecord.aggregate([
-    { $match: { project: project._id, usageDate: { $gte: since } } },
-    { $group: { _id: '$service', total: { $sum: '$amount' } } },
-    { $sort: { total: -1 } },
-    { $project: { _id: 0, service: '$_id', total: { $round: ['$total', 2] } } },
+    {
+      $match: {
+        project: workspace._id,
+        usageDate: {
+          $gte: currentMonthStart,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: '$service',
+        total: {
+          $sum: '$amount',
+        },
+      },
+    },
+    {
+      $sort: {
+        total: -1,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        service: '$_id',
+        total: {
+          $round: ['$total', 2],
+        },
+      },
+    },
   ]);
 
   return ok(res, 'Cost by service fetched.', data);
 });
 
-// GET /api/projects/:projectId/costs/by-region
+// GET /api/costs/by-region
 const getCostByRegion = asyncHandler(async (req, res) => {
-  const project = await _ownedProject(req.params.projectId, req.user._id);
-  if (!project) return notFound(res, 'Project not found.');
+  const workspace = await getOrCreateWorkspace(req.user._id);
 
-  const since = new Date();
-  since.setDate(1);
+  const currentMonthStart = new Date();
+  currentMonthStart.setDate(1);
+  currentMonthStart.setHours(0, 0, 0, 0);
 
   const data = await CostRecord.aggregate([
-    { $match: { project: project._id, usageDate: { $gte: since } } },
-    { $group: { _id: '$region', total: { $sum: '$amount' } } },
-    { $sort: { total: -1 } },
-    { $project: { _id: 0, region: '$_id', total: { $round: ['$total', 2] } } },
+    {
+      $match: {
+        project: workspace._id,
+        usageDate: {
+          $gte: currentMonthStart,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: '$region',
+        total: {
+          $sum: '$amount',
+        },
+      },
+    },
+    {
+      $sort: {
+        total: -1,
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        region: '$_id',
+        total: {
+          $round: ['$total', 2],
+        },
+      },
+    },
   ]);
 
   return ok(res, 'Cost by region fetched.', data);
 });
 
-// GET /api/projects/:projectId/costs/prediction
+// GET /api/costs/prediction
 const getCostPrediction = asyncHandler(async (req, res) => {
-  const project = await _ownedProject(req.params.projectId, req.user._id);
-  if (!project) return notFound(res, 'Project not found.');
+  const workspace = await getOrCreateWorkspace(req.user._id);
 
-  const predicted = await predictMonthlySpend(project._id);
-  const budget = parseFloat(process.env.DEFAULT_MONTHLY_BUDGET || '1000');
+  const predictedResult = await predictMonthlySpend(workspace._id);
 
-  const since = new Date();
-  since.setDate(1);
-  const costAgg = await CostRecord.aggregate([
-    { $match: { project: project._id, usageDate: { $gte: since } } },
-    { $group: { _id: null, total: { $sum: '$amount' } } },
+  const predictedMonthlySpend =
+    typeof predictedResult === 'number'
+      ? predictedResult
+      : Number(predictedResult?.predicted || 0);
+
+  const budget = Number(
+    process.env.DEFAULT_MONTHLY_BUDGET || 1000
+  );
+
+  const currentMonthStart = new Date();
+  currentMonthStart.setDate(1);
+  currentMonthStart.setHours(0, 0, 0, 0);
+
+  const costAggregation = await CostRecord.aggregate([
+    {
+      $match: {
+        project: workspace._id,
+        usageDate: {
+          $gte: currentMonthStart,
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        total: {
+          $sum: '$amount',
+        },
+      },
+    },
   ]);
-  const currentSpend = costAgg[0]?.total || 0;
+
+  const currentSpend = Number(
+    Number(costAggregation[0]?.total || 0).toFixed(2)
+  );
+
+  const budgetUsedPercent =
+    budget > 0
+      ? Number(((currentSpend / budget) * 100).toFixed(2))
+      : 0;
+
+  const projectedOverrun =
+    predictedMonthlySpend > budget
+      ? Number((predictedMonthlySpend - budget).toFixed(2))
+      : 0;
 
   return ok(res, 'Cost prediction fetched.', {
-    currentSpend: parseFloat(currentSpend.toFixed(2)),
-    predictedMonthlySpend: predicted,
+    currentSpend,
+    predictedMonthlySpend: Number(
+      Number(predictedMonthlySpend || 0).toFixed(2)
+    ),
     budget,
-    budgetUsedPercent: parseFloat(((currentSpend / budget) * 100).toFixed(2)),
+    budgetUsedPercent,
     isOverBudget: currentSpend > budget,
-    projectedOverrun: predicted > budget ? parseFloat((predicted - budget).toFixed(2)) : 0,
+    projectedOverrun,
   });
 });
 
-module.exports = { getCostTrend, getCostByService, getCostByRegion, getCostPrediction };
+module.exports = {
+  getCostTrend,
+  getCostByService,
+  getCostByRegion,
+  getCostPrediction,
+  createCostRecord,
+};

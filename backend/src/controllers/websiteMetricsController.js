@@ -3,74 +3,177 @@
 const WebsiteMetric = require('../models/WebsiteMetric');
 const WebsiteConfig = require('../models/WebsiteConfig');
 const Project = require('../models/Project');
+
 const { checkWebsite } = require('../services/monitoringService');
 const { ok, notFound } = require('../utils/response');
 const asyncHandler = require('../utils/asyncHandler');
 
-const _ownedProject = async (projectId, userId) =>
-  Project.findOne({ _id: projectId, owner: userId });
+async function getOrCreateWorkspace(userId) {
+  let workspace = await Project.findOne({
+    owner: userId,
+    status: 'active',
+  }).sort({ createdAt: -1 });
 
-// GET /api/projects/:projectId/website-metrics/summary
+  if (!workspace) {
+    workspace = await Project.create({
+      name: 'Default AWS Workspace',
+      description: 'Default cloud monitoring workspace',
+      environment: 'production',
+      cloudProvider: 'AWS',
+      owner: userId,
+      defaultRegion: 'ap-south-1',
+      status: 'active',
+    });
+  }
+
+  return workspace;
+}
+
+// GET /api/website-metrics/summary
 const getWebsiteSummary = asyncHandler(async (req, res) => {
-  const project = await _ownedProject(req.params.projectId, req.user._id);
-  if (!project) return notFound(res, 'Project not found.');
+  const workspace = await getOrCreateWorkspace(req.user._id);
 
-  const config = await WebsiteConfig.findOne({ project: project._id });
-  if (!config) return notFound(res, 'Website not configured.');
+  const config = await WebsiteConfig.findOne({
+    project: workspace._id,
+  }).lean();
 
-  const recent = await WebsiteMetric.find({ websiteConfig: config._id })
+  if (!config) {
+    return notFound(res, 'Website not configured.');
+  }
+
+  const recentMetrics = await WebsiteMetric.find({
+    project: workspace._id,
+    websiteConfig: config._id,
+  })
     .sort({ checkedAt: -1 })
     .limit(100)
     .lean();
 
-  const totalChecks = recent.length;
-  const upChecks = recent.filter((m) => m.isUp).length;
-  const avgResponseTime = totalChecks
-    ? parseFloat((recent.reduce((s, m) => s + m.responseTime, 0) / totalChecks).toFixed(2))
-    : 0;
-  const avgErrorRate = totalChecks
-    ? parseFloat((recent.reduce((s, m) => s + m.errorRate, 0) / totalChecks).toFixed(2))
-    : 0;
-  const uptimePct = totalChecks ? parseFloat(((upChecks / totalChecks) * 100).toFixed(2)) : 100;
-  const latest = recent[0] || null;
+  const totalChecks = recentMetrics.length;
+
+  const successfulChecks = recentMetrics.filter(
+    (metric) => metric.isUp
+  ).length;
+
+  const failedChecks = totalChecks - successfulChecks;
+
+  const averageResponseTime =
+    totalChecks > 0
+      ? Number(
+          (
+            recentMetrics.reduce(
+              (sum, metric) =>
+                sum + Number(metric.responseTime || 0),
+              0
+            ) / totalChecks
+          ).toFixed(2)
+        )
+      : 0;
+
+  const averageErrorRate =
+    totalChecks > 0
+      ? Number(
+          (
+            recentMetrics.reduce(
+              (sum, metric) =>
+                sum + Number(metric.errorRate || 0),
+              0
+            ) / totalChecks
+          ).toFixed(2)
+        )
+      : 0;
+
+  const uptimePercentage =
+    totalChecks > 0
+      ? Number(
+          ((successfulChecks / totalChecks) * 100).toFixed(2)
+        )
+      : 100;
+
+  const latestMetric = recentMetrics[0] || null;
 
   return ok(res, 'Website summary fetched.', {
     websiteName: config.websiteName,
     websiteUrl: config.websiteUrl,
-    isUp: latest?.isUp ?? true,
-    avgResponseTime,
-    uptimePercentage: uptimePct,
-    avgErrorRate,
+
+    isUp: latestMetric?.isUp ?? true,
+
+    uptimePercentage,
+    averageResponseTime,
+    avgResponseTime: averageResponseTime,
+
+    averageErrorRate,
+    avgErrorRate: averageErrorRate,
+
     totalChecks,
-    lastChecked: latest?.checkedAt || null,
-    lastStatusCode: latest?.statusCode || null,
+    successfulChecks,
+    failedChecks,
+
+    lastChecked: latestMetric?.checkedAt || null,
+    lastStatusCode: latestMetric?.statusCode || null,
   });
 });
 
-// GET /api/projects/:projectId/website-metrics/response-time-trend
+// GET /api/website-metrics/response-time-trend
 const getResponseTimeTrend = asyncHandler(async (req, res) => {
-  const project = await _ownedProject(req.params.projectId, req.user._id);
-  if (!project) return notFound(res, 'Project not found.');
+  const workspace = await getOrCreateWorkspace(req.user._id);
 
-  const hours = parseInt(req.query.hours, 10) || 24;
-  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const rawHours = Number.parseInt(req.query.hours, 10);
+  const hours =
+    Number.isFinite(rawHours) && rawHours > 0
+      ? Math.min(rawHours, 720)
+      : 24;
+
+  const since = new Date(
+    Date.now() - hours * 60 * 60 * 1000
+  );
 
   const data = await WebsiteMetric.aggregate([
-    { $match: { project: project._id, checkedAt: { $gte: since } } },
     {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%dT%H:00:00.000Z', date: '$checkedAt' } },
-        avgResponseTime: { $avg: '$responseTime' },
-        maxResponseTime: { $max: '$responseTime' },
+      $match: {
+        project: workspace._id,
+        checkedAt: {
+          $gte: since,
+        },
       },
     },
-    { $sort: { _id: 1 } },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: '%Y-%m-%dT%H:00:00.000Z',
+            date: '$checkedAt',
+          },
+        },
+        averageResponseTime: {
+          $avg: '$responseTime',
+        },
+        maximumResponseTime: {
+          $max: '$responseTime',
+        },
+      },
+    },
+    {
+      $sort: {
+        _id: 1,
+      },
+    },
     {
       $project: {
         _id: 0,
         timestamp: '$_id',
-        avg: { $round: ['$avgResponseTime', 0] },
-        max: { $round: ['$maxResponseTime', 0] },
+        average: {
+          $round: ['$averageResponseTime', 0],
+        },
+        avg: {
+          $round: ['$averageResponseTime', 0],
+        },
+        maximum: {
+          $round: ['$maximumResponseTime', 0],
+        },
+        max: {
+          $round: ['$maximumResponseTime', 0],
+        },
       },
     },
   ]);
@@ -78,32 +181,82 @@ const getResponseTimeTrend = asyncHandler(async (req, res) => {
   return ok(res, 'Response time trend fetched.', data);
 });
 
-// GET /api/projects/:projectId/website-metrics/uptime-trend
+// GET /api/website-metrics/uptime-trend
 const getUptimeTrend = asyncHandler(async (req, res) => {
-  const project = await _ownedProject(req.params.projectId, req.user._id);
-  if (!project) return notFound(res, 'Project not found.');
+  const workspace = await getOrCreateWorkspace(req.user._id);
 
-  const days = parseInt(req.query.days, 10) || 7;
-  const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const rawDays = Number.parseInt(req.query.days, 10);
+  const days =
+    Number.isFinite(rawDays) && rawDays > 0
+      ? Math.min(rawDays, 365)
+      : 7;
+
+  const since = new Date(
+    Date.now() - days * 24 * 60 * 60 * 1000
+  );
 
   const data = await WebsiteMetric.aggregate([
-    { $match: { project: project._id, checkedAt: { $gte: since } } },
     {
-      $group: {
-        _id: { $dateToString: { format: '%Y-%m-%d', date: '$checkedAt' } },
-        totalChecks: { $sum: 1 },
-        upChecks: { $sum: { $cond: ['$isUp', 1, 0] } },
+      $match: {
+        project: workspace._id,
+        checkedAt: {
+          $gte: since,
+        },
       },
     },
-    { $sort: { _id: 1 } },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            format: '%Y-%m-%d',
+            date: '$checkedAt',
+          },
+        },
+        totalChecks: {
+          $sum: 1,
+        },
+        successfulChecks: {
+          $sum: {
+            $cond: ['$isUp', 1, 0],
+          },
+        },
+      },
+    },
+    {
+      $sort: {
+        _id: 1,
+      },
+    },
     {
       $project: {
         _id: 0,
         date: '$_id',
         uptime: {
-          $round: [{ $multiply: [{ $divide: ['$upChecks', '$totalChecks'] }, 100] }, 2],
+          $cond: [
+            {
+              $gt: ['$totalChecks', 0],
+            },
+            {
+              $round: [
+                {
+                  $multiply: [
+                    {
+                      $divide: [
+                        '$successfulChecks',
+                        '$totalChecks',
+                      ],
+                    },
+                    100,
+                  ],
+                },
+                2,
+              ],
+            },
+            100,
+          ],
         },
         totalChecks: 1,
+        successfulChecks: 1,
       },
     },
   ]);
@@ -111,16 +264,26 @@ const getUptimeTrend = asyncHandler(async (req, res) => {
   return ok(res, 'Uptime trend fetched.', data);
 });
 
-// POST /api/projects/:projectId/website-metrics/check
+// POST /api/website-metrics/check
 const manualHealthCheck = asyncHandler(async (req, res) => {
-  const project = await _ownedProject(req.params.projectId, req.user._id);
-  if (!project) return notFound(res, 'Project not found.');
+  const workspace = await getOrCreateWorkspace(req.user._id);
 
-  const config = await WebsiteConfig.findOne({ project: project._id });
-  if (!config) return notFound(res, 'Website not configured.');
+  const config = await WebsiteConfig.findOne({
+    project: workspace._id,
+  });
+
+  if (!config) {
+    return notFound(res, 'Website not configured.');
+  }
 
   const metric = await checkWebsite(config);
+
   return ok(res, 'Health check completed.', metric);
 });
 
-module.exports = { getWebsiteSummary, getResponseTimeTrend, getUptimeTrend, manualHealthCheck };
+module.exports = {
+  getWebsiteSummary,
+  getResponseTimeTrend,
+  getUptimeTrend,
+  manualHealthCheck,
+};

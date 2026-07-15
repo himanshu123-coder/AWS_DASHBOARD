@@ -30,7 +30,13 @@ export interface CloudInstance {
   instanceId: string;
   name: string;
   instanceType: string;
-  state: string;
+  state:
+    | 'running'
+    | 'stopped'
+    | 'idle'
+    | 'warning'
+    | 'pending'
+    | 'terminated';
   region: string;
   cpuUsage: number;
   memoryUsage: number;
@@ -39,9 +45,7 @@ export interface CloudInstance {
   networkOut: number;
   monthlyCost: number;
   uptime: number;
-  tags?: Record<string, string>;
 }
-
 export interface Alert {
   _id: string;
   type: string;

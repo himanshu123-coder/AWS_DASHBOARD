@@ -61,11 +61,11 @@ app.use('/api/projects', projectRoutes);
 
 // Sub-resource routes (nested under /api/projects/:projectId)
 app.use('/api/projects/:projectId/cloud-connection', cloudConnectionRoutes);
-app.use('/api/projects/:projectId/website-config', websiteConfigRoutes);
-app.use('/api/projects/:projectId/instances', instanceRoutes);
+app.use('/api/website-config', websiteConfigRoutes);
+app.use('/api/instances', instanceRoutes);
 app.use('/api/projects/:projectId/metrics', metricsRoutes);
-app.use('/api/projects/:projectId/website-metrics', websiteMetricsRoutes);
-app.use('/api/projects/:projectId/costs', costRoutes);
+app.use('/api/website-metrics', websiteMetricsRoutes);
+app.use('/api/costs', costRoutes);
 app.use('/api/projects/:projectId/alerts', alertRoutes);
 app.use('/api/projects/:projectId/recommendations', recommendationRoutes);
 

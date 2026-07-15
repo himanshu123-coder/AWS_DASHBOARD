@@ -1,46 +1,62 @@
-import { useState, useEffect } from 'react';
-import { Search, Filter, X, Eye, Loader2, AlertCircle } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Search, Filter, X, Eye } from 'lucide-react';
+
 import InstanceDetailsModal from './InstanceDetailModal';
-import { api } from '../lib/api';
-import { useProject } from '../lib/project-context';
 import type { CloudInstance } from '../lib/types';
 
-export default function InstanceTable() {
-  const { selectedProject } = useProject();
-  const [instances, setInstances] = useState<CloudInstance[]>([]);
+interface InstanceTableProps {
+  instances: CloudInstance[];
+  onInstancesChange: React.Dispatch<
+    React.SetStateAction<CloudInstance[]>
+  >;
+  onRefresh: () => Promise<void>;
+}
+
+export default function InstanceTable({
+  instances,
+}: InstanceTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [regionFilter, setRegionFilter] = useState('');
   const [stateFilter, setStateFilter] = useState('');
-  const [selectedInstance, setSelectedInstance] = useState<CloudInstance | null>(
-    null
+
+  const [selectedInstance, setSelectedInstance] =
+    useState<CloudInstance | null>(null);
+
+  const filteredInstances = useMemo(() => {
+    const normalizedSearch = searchQuery.toLowerCase().trim();
+
+    return instances.filter((instance) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        instance.name.toLowerCase().includes(normalizedSearch) ||
+        instance.instanceId
+          .toLowerCase()
+          .includes(normalizedSearch);
+
+      const matchesRegion =
+        !regionFilter || instance.region === regionFilter;
+
+      const matchesState =
+        !stateFilter || instance.state === stateFilter;
+
+      return matchesSearch && matchesRegion && matchesState;
+    });
+  }, [
+    instances,
+    searchQuery,
+    regionFilter,
+    stateFilter,
+  ]);
+
+  const uniqueRegions = useMemo(
+    () => [...new Set(instances.map((item) => item.region))],
+    [instances]
   );
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
 
-  useEffect(() => {
-    if (!selectedProject) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError('');
-    api
-      .get<{ data: CloudInstance[] }>(
-        `/projects/${selectedProject._id}/instances?limit=100`
-      )
-      .then((res) => setInstances(res.data || []))
-      .catch((err) => setError(err.message || 'Failed to load instances'))
-      .finally(() => setLoading(false));
-  }, [selectedProject]);
-
-  const filteredInstances = instances.filter((instance) => {
-    const matchesSearch =
-      instance.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      instance.instanceId.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRegion = !regionFilter || instance.region === regionFilter;
-    const matchesState = !stateFilter || instance.state === stateFilter;
-    return matchesSearch && matchesRegion && matchesState;
-  });
+  const uniqueStates = useMemo(
+    () => [...new Set(instances.map((item) => item.state))],
+    [instances]
+  );
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -49,79 +65,100 @@ export default function InstanceTable() {
   };
 
   const getStateBadge = (state: string) => {
-    const badges: { [key: string]: string } = {
-      running: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-      stopped: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400',
-      idle: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-      pending: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-      terminated: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    const badges: Record<string, string> = {
+      running:
+        'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+
+      stopped:
+        'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400',
+
+      idle:
+        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+
+      warning:
+        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+
+      pending:
+        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+
+      terminated:
+        'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     };
-    return badges[state] || 'bg-slate-100 text-slate-700';
+
+    return (
+      badges[state] ||
+      'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+    );
   };
 
-  const uniqueRegions = [...new Set(instances.map((i) => i.region))];
-  const uniqueStates = [...new Set(instances.map((i) => i.state))];
-
-  if (loading)
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
-      </div>
-    );
-
-  if (error)
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <AlertCircle className="w-8 h-8 text-red-500 mb-2" />
-        <p className="text-sm text-slate-500 dark:text-slate-400">{error}</p>
-      </div>
-    );
+  const getCpuBarColor = (cpuUsage: number) => {
+    if (cpuUsage > 80) return 'bg-red-500';
+    if (cpuUsage > 50) return 'bg-amber-500';
+    return 'bg-green-500';
+  };
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-      <div className="p-4 border-b border-slate-200 dark:border-slate-800">
-        <div className="flex flex-col sm:flex-row gap-3">
+    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      {/* Search and filters */}
+      <div className="border-b border-slate-200 p-4 dark:border-slate-800">
+        <div className="flex flex-col gap-3 lg:flex-row">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
             <input
               type="text"
               placeholder="Search by name or instance ID..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onChange={(event) =>
+                setSearchQuery(event.target.value)
+              }
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-slate-800 outline-none transition focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             />
           </div>
-          <div className="flex gap-2">
+
+          <div className="flex flex-col gap-2 sm:flex-row">
             <select
               value={regionFilter}
-              onChange={(e) => setRegionFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onChange={(event) =>
+                setRegionFilter(event.target.value)
+              }
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
               <option value="">All Regions</option>
+
               {uniqueRegions.map((region) => (
                 <option key={region} value={region}>
                   {region}
                 </option>
               ))}
             </select>
+
             <select
               value={stateFilter}
-              onChange={(e) => setStateFilter(e.target.value)}
-              className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              onChange={(event) =>
+                setStateFilter(event.target.value)
+              }
+              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
             >
               <option value="">All States</option>
+
               {uniqueStates.map((state) => (
                 <option key={state} value={state}>
-                  {state.charAt(0).toUpperCase() + state.slice(1)}
+                  {state.charAt(0).toUpperCase() +
+                    state.slice(1)}
                 </option>
               ))}
             </select>
-            {(searchQuery || regionFilter || stateFilter) && (
+
+            {(searchQuery ||
+              regionFilter ||
+              stateFilter) && (
               <button
+                type="button"
                 onClick={clearFilters}
-                className="flex items-center gap-1 px-3 py-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                className="flex items-center justify-center gap-1 rounded-lg bg-red-100 px-3 py-2 text-red-600 transition hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
               >
-                <X className="w-4 h-4" />
+                <X className="h-4 w-4" />
                 Clear
               </button>
             )}
@@ -129,103 +166,115 @@ export default function InstanceTable() {
         </div>
       </div>
 
+      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full">
+        <table className="w-full min-w-275">
           <thead className="bg-slate-50 dark:bg-slate-800">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Instance Name
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Instance ID
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Type
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                State
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Region
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                CPU
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Network In
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Network Out
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Monthly Cost
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">
-                Actions
-              </th>
+              {[
+                'Instance Name',
+                'Instance ID',
+                'Type',
+                'State',
+                'Region',
+                'CPU',
+                'Network In',
+                'Network Out',
+                'Monthly Cost',
+                'Actions',
+              ].map((heading) => (
+                <th
+                  key={heading}
+                  className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500 dark:text-slate-400"
+                >
+                  {heading}
+                </th>
+              ))}
             </tr>
           </thead>
+
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
             {filteredInstances.map((instance) => (
               <tr
                 key={instance._id}
-                className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+                className="transition hover:bg-slate-50 dark:hover:bg-slate-800/50"
               >
                 <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-white">
                   {instance.name}
                 </td>
-                <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400 font-mono">
+
+                <td className="px-4 py-3 font-mono text-sm text-slate-500 dark:text-slate-400">
                   {instance.instanceId}
                 </td>
+
                 <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                   {instance.instanceType}
                 </td>
+
                 <td className="px-4 py-3">
                   <span
-                    className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getStateBadge(
+                    className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${getStateBadge(
                       instance.state
                     )}`}
                   >
-                    {instance.state.charAt(0).toUpperCase() + instance.state.slice(1)}
+                    {instance.state.charAt(0).toUpperCase() +
+                      instance.state.slice(1)}
                   </span>
                 </td>
+
                 <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
                   {instance.region}
                 </td>
+
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-16 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                    <div className="h-2 w-16 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                       <div
-                        className={`h-full rounded-full ${
-                          instance.cpuUsage > 80
-                            ? 'bg-red-500'
-                            : instance.cpuUsage > 50
-                            ? 'bg-amber-500'
-                            : 'bg-green-500'
-                        }`}
-                        style={{ width: `${instance.cpuUsage}%` }}
+                        className={`h-full rounded-full ${getCpuBarColor(
+                          instance.cpuUsage
+                        )}`}
+                        style={{
+                          width: `${Math.min(
+                            Number(instance.cpuUsage || 0),
+                            100
+                          )}%`,
+                        }}
                       />
                     </div>
+
                     <span className="text-sm text-slate-600 dark:text-slate-300">
-                      {instance.cpuUsage}%
+                      {Number(instance.cpuUsage || 0).toFixed(
+                        1
+                      )}
+                      %
                     </span>
                   </div>
                 </td>
+
                 <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                  {instance.networkIn} MB/s
+                  {Number(instance.networkIn || 0).toFixed(2)}
                 </td>
+
                 <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
-                  {instance.networkOut} MB/s
+                  {Number(instance.networkOut || 0).toFixed(2)}
                 </td>
+
                 <td className="px-4 py-3 text-sm font-medium text-slate-800 dark:text-white">
-                  ${instance.monthlyCost.toFixed(2)}
+                  ₹
+                  {Number(
+                    instance.monthlyCost || 0
+                  ).toLocaleString('en-IN')}
                 </td>
+
                 <td className="px-4 py-3">
                   <button
-                    onClick={() => setSelectedInstance(instance)}
-                    className="flex items-center gap-1 px-3 py-1.5 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-colors"
+                    type="button"
+                    onClick={() =>
+                      setSelectedInstance(instance)
+                    }
+                    className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-medium text-indigo-600 transition hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-900/30"
                   >
-                    <Eye className="w-4 h-4" />
+                    <Eye className="h-4 w-4" />
                     View
                   </button>
                 </td>
@@ -237,8 +286,11 @@ export default function InstanceTable() {
 
       {filteredInstances.length === 0 && (
         <div className="p-8 text-center">
-          <Filter className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-500 dark:text-slate-400">No instances found</p>
+          <Filter className="mx-auto mb-3 h-12 w-12 text-slate-300 dark:text-slate-600" />
+
+          <p className="text-slate-500 dark:text-slate-400">
+            No instances found
+          </p>
         </div>
       )}
 

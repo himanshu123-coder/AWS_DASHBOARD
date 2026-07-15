@@ -1,8 +1,15 @@
 'use strict';
 
 const express = require('express');
-const router = express.Router({ mergeParams: true });
-const { getWebsiteSummary, getResponseTimeTrend, getUptimeTrend, manualHealthCheck } = require('../controllers/websiteMetricsController');
+const router = express.Router();
+
+const {
+  getWebsiteSummary,
+  getResponseTimeTrend,
+  getUptimeTrend,
+  manualHealthCheck,
+} = require('../controllers/websiteMetricsController');
+
 const { protect } = require('../middleware/auth');
 
 router.use(protect);

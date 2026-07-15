@@ -6,7 +6,7 @@ const VALID_REGIONS = [
   'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
   'eu-west-1', 'eu-west-2', 'eu-central-1',
   'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1',
-  'sa-east-1', 'ca-central-1',
+  'sa-east-1', 'ca-central-1', 'ap-south-1' ,
 ];
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
@@ -54,12 +54,39 @@ const cloudConnectionRules = [
 // ─── Website Config ────────────────────────────────────────────────────────
 
 const websiteConfigRules = [
-  body('websiteName').trim().notEmpty().withMessage('Website name is required')
-    .isLength({ max: 100 }).withMessage('Website name cannot exceed 100 characters'),
-  body('websiteUrl').trim().notEmpty().withMessage('Website URL is required')
-    .isURL({ require_protocol: true }).withMessage('Valid URL with protocol is required'),
-];
+  body('websiteName')
+    .trim()
+    .notEmpty()
+    .withMessage('Website name is required')
+    .isLength({ max: 100 })
+    .withMessage('Website name cannot exceed 100 characters'),
 
+  body('websiteUrl')
+    .trim()
+    .notEmpty()
+    .withMessage('Website URL is required')
+    .isURL({
+      protocols: ['http', 'https'],
+      require_protocol: true,
+      require_tld: false,
+    })
+    .withMessage('Valid URL with protocol is required'),
+
+  body('enableMonitoring')
+    .optional()
+    .isBoolean()
+    .withMessage('enableMonitoring must be true or false'),
+
+  body('enableErrorTracking')
+    .optional()
+    .isBoolean()
+    .withMessage('enableErrorTracking must be true or false'),
+
+  body('checkInterval')
+    .optional()
+    .isInt({ min: 1, max: 60 })
+    .withMessage('Check interval must be between 1 and 60 minutes'),
+];
 // ─── Cloud Instance ────────────────────────────────────────────────────────
 
 const instanceRules = [
