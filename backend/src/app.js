@@ -22,6 +22,7 @@ const costRoutes = require('./routes/costs');
 const alertRoutes = require('./routes/alerts');
 const recommendationRoutes = require('./routes/recommendations');
 const dashboardRoutes = require('./routes/dashboard');
+const settingsRoutes = require('./routes/settings');
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use('/api/website-metrics', websiteMetricsRoutes);
 app.use('/api/costs', costRoutes);
 app.use('/api/projects/:projectId/alerts', alertRoutes);
 app.use('/api/projects/:projectId/recommendations', recommendationRoutes);
+app.use('/api/projects/:projectId/settings', settingsRoutes);
 
 // ── 404 ────────────────────────────────────────────────────────────────────
 app.use(notFound);
